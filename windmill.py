@@ -84,15 +84,15 @@ class Windmill:
         p_mat = np.mat(np.eye(2))  # 定义状态转移矩阵
         f_mat = np.mat([[1, 1], [0, 1]])  # 定义观测矩阵，因为每秒钟采一次样，所以delta_t = 1
         h_mat = np.mat([1, 0])  # 定义观测噪声协方差
-        r_mat = np.mat([0.5])  # 定义状态转移矩阵噪声
+        r_mat = np.mat([0.1])  # 定义状态转移矩阵噪声
         for angle in angles:
             x_predict = f_mat * x_mat
-            p_predict = f_mat * p_mat * f_mat.T
+            p_predict = f_mat * p_mat * f_mat.T + r_mat
             kalman = p_predict * h_mat.T / (h_mat * p_predict * h_mat.T + r_mat)
             x_mat = x_predict + kalman * (np.mat(angle) - h_mat * x_predict)
             p_mat = (np.eye(2) - kalman * h_mat) * p_predict
         self.next_angle = (f_mat * x_mat).tolist()[0][0]  # f_mat只预测下一帧的角度
-        self.hit_angle_predict = (np.mat([[1, prediction], [0, 1]]) * x_mat).tolist()[0][0]  # 预测count帧后的角度
+        self.hit_angle_predict = (np.mat([[1, prediction], [0, 0]]) * x_mat).tolist()[0][0]  # 预测count帧后的角度
 
     def angle_correct(self, center_point, target_point, angle):     # 根据坐标关系对目标点的角度进行修正
         # 修正的理想结果是最左边是0°顺时针到最下边是270°（-90°）
@@ -157,18 +157,6 @@ class Windmill:
         cur = self.Rect.head
         while cur is not None:
             if 3200 * 0.8 <= cur.area() <= 3200 * 1.2:
-                """
-                    挖坑：
-                        如果箭头挨着目标矩形框会造成识别的时候把他们认为是一个大矩形，使目标点与中心点的距离减小产生误差
-                    参考：
-                        使用穿过中心点直线的斜率使中心点的沿斜率方向移动
-                        移动距离按垂直于直线的边作为参考计算相邻的边与实际差了多少
-                """
-                # print("正常高宽比：", cur.width/cur.height)     # 1.4左右
-                box = cv2.boxPoints((cur.point, cur.side, cur.orig_angle))      # 转化成轮廓信息
-                box = np.int0(box)  # 转换成整数操作
-                cv2.drawContours(self.img, [box], -1, (0, 0, 255), 1)       # 画出其最小外接矩形
-
                 k = np.tan(np.radians(cur.angle))       # 计算目标矩形经过中心点的直线
                 b = (cur.point[1]) - k * cur.point[0]
 
@@ -199,10 +187,35 @@ class Windmill:
                     self.refresh_optimal_center(center_point)       # 更新最优中心点
                     # cur.angle 在最下方时为-90°顺时针旋转到最上方时为90°（-90°）即下个循环的起点，而后又到达最下方为90°
                     self.angle_correct(self.optimal_center_point, cur.point, cur.angle)     # 修正角度
+                    # 对最优节点轮廓进行修正
+                    delta = cur.width - cur.height*0.7      # 高不会明显变化，宽一般是高的0.7倍
+                    if delta > 0:       # 当宽大于高乘以0.7倍，即宽被取大了
+                        dx = np.sqrt(delta**2/(1+k**2))/2     # 按角度方向对中心点的横纵坐标进行调整
+                        dy = k*dx
+                        if k < 0:       # 图像左上角为坐标原点，与左下角为坐标原点的坐标系一三象限互换，二四象限互换
+                            if self.before_angles[-1] < 0:      # 图像2，4象限，k为负。用修正后的角度来确认轮廓中心在哪个象限
+                                good_point = [cur.point[0]-dx, cur.point[1]-dy]
+                            else:
+                                good_point = [cur.point[0]+dx, cur.point[1]+dy]
+                        else:
+                            if self.before_angles[-1] <= 90:      # 在1，3象限，k为正
+                                good_point = [cur.point[0]-dx, cur.point[1]-dy]
+                            else:
+                                good_point = [cur.point[0]+dx, cur.point[1]+dy]
+                        if cur.side[0] > cur.side[1]:       # 对宽高边进行修整
+                            good_side = [cur.side[0], cur.side[0]*0.7]
+                        else:
+                            good_side = [cur.side[1]*0.7, cur.side[1]]
+                        cur.point = good_point      # 完成修改
+                        cur.side = good_side
+                    box = cv2.boxPoints((cur.point, cur.side, cur.orig_angle))      # 转化成轮廓信息
+                    box = np.int0(box)  # 转换成整数操作
+                    cv2.drawContours(self.img, [box], -1, (0, 0, 255), 1)       # 画出其最小外接矩形
+
                     if len(self.before_angles) > 1:     # 平均角速度
                         self.angular_speed = (self.before_angles[-1]-self.before_angles[0])/(len(self.before_angles)-1)
                     self.kalman_filter(self.before_angles, self.angular_speed)      # 卡尔曼滤波进行预测
-                    self.hit_predict(center_point, cur.point)       # 预测要打击的点并画出来
+                    self.hit_predict(center_point, cur.point)       # 将要打击的点并画出来
                 self.last_target_point = cur.point      # 保存当前目标点
                 break
             cur = cur.next
@@ -212,9 +225,8 @@ class Windmill:
             self.kalman_filter(self.before_angles, self.angular_speed)
             if len(self.before_angles) > 5:
                 self.before_angles.pop(0)
-            self.hit_predict(self.optimal_center_point, self.last_target_point)
-        # print(self.before_angles)
-        if center_point is not None:        # 画出中心点
+            self.hit_predict(self.optimal_center_point, self.last_target_point)     # 预测打击点
+        if center_point is not None:        # 画出风车的中心点
             cv2.circle(self.img, tuple(np.int0(self.optimal_center_point)), 3, color=(0, 255, 255), thickness=3)
         cv2.imshow('dst', self.img)
         cv2.waitKey(0)
