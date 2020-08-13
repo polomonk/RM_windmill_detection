@@ -1,7 +1,7 @@
 ## 大风车识别部分
 
-### 流程图bu
-![img](https://github.com/polomonk/RM_windmill_detection/images/flow.png)
+### 流程图
+![img](https://github.com/polomonk/RM_windmill_detection/blob/master/images/flow.png)
 <!--
 ```flow
 st=>start: 开始
@@ -24,8 +24,8 @@ con(yes)->opy->end
 - 预测打击点会左右横跳，是因为轮廓的测量角度与实际角度存在一定误差。当最后一次测量角度变化较大时，卡尔曼滤波预测的结果受其影响较大，其中也有使用上一帧预测结果作为当前帧的影响。
 
 - 大风车中心点会根据上一次计算的中心点进行加权平均，权值取决于帧数。在数据量少的时候容易产生中心点左右横跳的情况
-- 代码里大部分都是在跟轮廓的角度进行处理，因为opencv提供的函数只能得到轮廓 /[0~90) 的角度区间。通过轮廓的宽高信息可以将角度区间提升到 /[0~180) ，再根据与风车中心点的比对确认具体的角度 (-90~270/] 。而由于风车中心点和轮廓角度的双向误差还需对角度进行判定和修正
+- 代码里大部分都是在跟轮廓的角度进行处理，因为opencv提供的函数只能得到轮廓 \[0~90) 的角度区间。通过轮廓的宽高信息可以将角度区间提升到 \[0~180) ，再根据与风车中心点的比对确认具体的角度 (-90~270] 。而由于风车中心点和轮廓角度的双向误差还需对角度进行判定和修正
 
 ### 识别结果
-![img](https://github.com/polomonk/RM_windmill_detection/images/dst.png)
+![img](https://github.com/polomonk/RM_windmill_detection/blob/master/images/dst.png)
 
