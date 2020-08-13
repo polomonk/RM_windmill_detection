@@ -29,3 +29,5 @@ con(yes)->opy->end
 ### 识别结果
 ![img](https://github.com/polomonk/RM_windmill_detection/blob/master/images/dst.png)
 - 粉色的点为预测打击的目标
+- 黄色的点为计算出的大风车中心点
+- 画出黄线可以更好地查看算法效果
